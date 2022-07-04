@@ -42,7 +42,7 @@ class EpisodicTrajectoryBuffer:
     """
     Adds transitions to the current running trajectory.
     """
-    batch_size = min(transition.observation.shape[0], self.observation.shape[1])
+    batch_size = min(transition.observation.shape[0], self.observation.shape[0])
     episode_slice = slice(self.episode_id, self.episode_id + batch_size)
     self.observation[episode_slice,
                      self.idx] = transition.observation[:batch_size].copy()
@@ -50,10 +50,10 @@ class EpisodicTrajectoryBuffer:
     self.reward[episode_slice, self.idx] = transition.reward[:batch_size].copy()
     self.cost[episode_slice, self.idx] = transition.cost[:batch_size].copy()
     if transition.last:
-      assert self.idx == self.reward.shape[2] - 1
+      assert self.idx == self.reward.shape[1] - 1
       self.observation[episode_slice, self.idx +
                        1] = transition.next_observation[:batch_size].copy()
-      if self.episode_id + batch_size == self.observation.shape[1]:
+      if self.episode_id + batch_size == self.observation.shape[0]:
         self._full = True
       else:
         self.idx = -1
@@ -62,7 +62,7 @@ class EpisodicTrajectoryBuffer:
 
   def dump(self) -> TrajectoryData:
     """
-    Returns all trajectories from all tasks (with shape [N_tasks, K_episodes,
+    Returns all trajectories from all tasks (with shape [K_episodes,
     T_steps, ...]).
     """
     o = self.observation

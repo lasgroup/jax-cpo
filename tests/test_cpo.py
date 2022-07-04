@@ -1,9 +1,30 @@
 import os
 import pytest
 
-import jax_cpo
 from jax_cpo import config as options
 from jax_cpo import trainer as t
+
+from copy import deepcopy
+from types import SimpleNamespace
+from gym import spaces
+import haiku as hk
+
+from jax_cpo import logging
+from jax_cpo import models
+from jax_cpo import cpo
+
+
+def make(config: SimpleNamespace, observation_space: spaces.Space,
+         action_space: spaces.Space, logger: logging.TrainingLogger):
+  actor = hk.without_apply_rng(
+      hk.transform(lambda x: models.Actor(
+          **config.actor, output_size=action_space.shape)(x)))
+  critic = hk.without_apply_rng(
+      hk.transform(
+          lambda x: models.DenseDecoder(**config.critic, output_size=(1,))(x)))
+  safety_critic = deepcopy(critic)
+  return cpo.CPO(observation_space, action_space, config, logger, actor, critic,
+                 safety_critic)
 
 
 @pytest.mark.not_safe
@@ -16,11 +37,10 @@ def test_not_safe():
     return env
 
   config = options.load_config([
-      '--configs', 'defaults', 'no_adaptation', '--agent', 'cpo',
-      '--num_trajectories', '300', '--time_limit', '150', '--vf_iters', '10',
-      '--eval_trials', '0', '--train_driver.adaptation_steps', '45000',
-      '--render_episodes', '0', '--test_driver.adaptation_steps', '1500',
-      '--lambda_', '0.95', '--epochs', '100', '--safe', 'False', '--log_dir',
+      '--configs', 'defaults', '--num_trajectories', '300', '--time_limit',
+      '150', '--vf_iters', '10', '--train_steps_per_epoch', '45000',
+      '--render_episodes', '0', '--test_steps_per_epoch', '1500', '--lambda_',
+      '0.95', '--epochs', '100', '--safe', 'False', '--log_dir',
       'results/test_cpo_not_safe'
   ])
   if not config.jit:
@@ -28,7 +48,7 @@ def test_not_safe():
     jax_config.update('jax_disable_jit', True)
   path = os.path.join(config.log_dir, 'state.pkl')
   with t.Trainer.from_pickle(config) if os.path.exists(path) else t.Trainer(
-      config=config, make_agent=jax_cpo.make,
+      config=config, make_agent=make,
       make_env=lambda: make_env(config)) as trainer:
     objective, constraint = trainer.train()
   assert objective[config.task] > 115.
@@ -50,17 +70,16 @@ def test_safe():
     return env
 
   config = options.load_config([
-      '--configs', 'defaults', 'no_adaptation', '--agent', 'cpo',
-      '--num_trajectories', '30', '--eval_trials', '1', '--render_episodes',
-      '0', '--train_driver.adaptation_steps', '30000', '--epochs', '334',
-      '--safe', 'True', '--log_dir', 'results/test_cpo_safe'
+      '--configs', 'defaults', '--num_trajectories', '30', '--render_episodes',
+      '0', '--train_steps_per_epoch', '30000', '--epochs', '334', '--safe',
+      'True', '--log_dir', 'results/test_cpo_safe'
   ])
   if not config.jit:
     from jax.config import config as jax_config
     jax_config.update('jax_disable_jit', True)
   path = os.path.join(config.log_dir, 'state.pkl')
   with t.Trainer.from_pickle(config) if os.path.exists(path) else t.Trainer(
-      config=config, make_agent=jax_cpo.make,
+      config=config, make_agent=make,
       make_env=lambda: make_env(config)) as trainer:
     objective, constraint = trainer.train()
   assert objective[config.task] >= 7.

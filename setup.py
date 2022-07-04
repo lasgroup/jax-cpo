@@ -7,7 +7,7 @@ required = [
     'tensorflow', 'tensorflow-probability', 'moviepy', 'gym'
 ]
 
-extras = {'dev': ['pytest>=4.4.0', 'mujoco-py', 'safety-adaptation-gym']}
+extras = {'dev': ['pytest>=4.4.0', 'mujoco-py']}
 
 setup(
     name='jax-cpo',

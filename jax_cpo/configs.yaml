@@ -5,7 +5,8 @@ defaults:
   seed: 0
   time_limit: 1000
   epochs: 200
-  steps_per_epoch: 10000
+  train_steps_per_epoch: 10000
+  test_steps_per_epoch: 10000
   eval_every: 5
   action_repeat: 1
   render_episodes: 1
@@ -13,21 +14,13 @@ defaults:
   jit: True
   precision: 32
   parallel_envs: 10
-  train_every: 1000
-  update_steps: 100
-  discount: 0.99
-  safety_discount: 0.99
-  lambda_: 0.97
-  actor_opt: {lr: 8e-5, eps: 1e-6}
-  critic_opt: {lr: 8e-5, eps: 1e-6}
-  safety_critic_opt: {lr: 8e-5, eps: 1e-6}
   entropy_regularization: 0.
   vf_iters: 80
   actor: {layers: [256, 256], min_stddev: 0.01, max_stddev: 10., activation: jnn.tanh, initialization: glorot}
   critic: {layers: [256, 256], dist: normal, activation: jnn.tanh, name: 'critic', initialization: glorot}
   discount: 0.99
-  lambda_: 0.97
   cost_discount: 0.99
+  lambda_: 0.97
   num_trajectories: 30
   actor_opt: {}
   critic_opt: {lr: 1e-3, eps: 1e-5, clip: 0.5}

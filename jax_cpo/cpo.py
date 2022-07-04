@@ -12,8 +12,9 @@ from gym import spaces
 from jax.scipy import sparse
 from tensorflow_probability.substrates import jax as tfp
 
-from jax_cpo import logging
+from jax_cpo.logging import TrainingLogger
 from jax_cpo import utils
+from jax_cpo import transition as t
 from jax_cpo import episodic_trajectory_buffer as etb
 
 tfd = tfp.distributions
@@ -32,7 +33,7 @@ class CPO:
 
   def __init__(self, observation_space: spaces.Space,
                action_space: spaces.Space, config: SimpleNamespace,
-               logger: logging.TrainingLogger, actor: hk.Transformed,
+               logger: TrainingLogger, actor: hk.Transformed,
                critic: hk.Transformed, safety_critic: hk.Transformed):
     self.config = config
     self.logger = logger
@@ -57,15 +58,43 @@ class CPO:
         observation_space.sample())
     self.margin = 0.
 
-  def train(self, trajectory_data):
+  def __call__(self, observation: np.ndarray, train: bool, *args,
+               **kwargs) -> np.ndarray:
+    if self.buffer.full and train:
+      self.train(self.buffer.dump())
+      self.logger.log_metrics(self.training_step)
+    action = self.policy(observation, self.actor.params, next(self.rng_seq),
+                         train)
+    return action
+
+  @partial(jax.jit, static_argnums=(0, 4))
+  def policy(self,
+             observation: jnp.ndarray,
+             params: hk.Params,
+             key: jnp.ndarray,
+             training: bool = True) -> jnp.ndarray:
+    policy = self.actor.apply(params, observation)
+    action = policy.sample(seed=key) if training else policy.mode()
+    return action
+
+  def observe(self, transition: t.Transition):
+    self.buffer.add(transition)
+    self.training_step += sum(transition.steps)
+
+  def train(self, trajectory_data: etb.TrajectoryData):
     eval_ = self.evaluate_trajectories(self.critic.params,
                                        self.safety_critic.params,
                                        trajectory_data.o, trajectory_data.r,
                                        trajectory_data.c)
     constraint = trajectory_data.c.sum(1).mean()
+    # https://github.com/openai/safety-starter-agents/blob/4151a283967520ee000f03b3a79bf35262ff3509/safe_rl/pg/agents.py#L260
+    c = (constraint - self.config.cost_limit)
+    self.margin = max(0, self.margin + self.config.margin_lr * c)
+    c += self.margin
+    c /= (self.config.time_limit + 1e-8)
     self.actor.state, actor_report = self.update_actor(
         self.actor.state, trajectory_data.o[:, :-1], trajectory_data.a,
-        eval_.advantage, eval_.cost_advantage, constraint)
+        eval_.advantage, eval_.cost_advantage, c)
     self.critic.state, critic_report = self.update_critic(
         self.critic.state, trajectory_data.o[:, :-1], eval_.return_)
     if self.safe:
@@ -79,15 +108,9 @@ class CPO:
   @partial(jax.jit, static_argnums=0)
   def update_actor(self, state: utils.LearningState,
                    *args) -> [utils.LearningState, dict]:
-    observation, action, advantage, cost_advantage, constraint = args
+    observation, action, advantage, cost_advantage, c = args
     old_pi = self.actor.apply(state.params, observation)
     old_pi_logprob = old_pi.log_prob(action)
-    # https://github.com/openai/safety-starter-agents/blob
-    # /4151a283967520ee000f03b3a79bf35262ff3509/safe_rl/pg/agents.py#L260
-    c = (constraint - self.config.cost_limit)
-    self.margin = max(0, self.margin + self.config.margin_lr * c)
-    c += self.margin
-    c /= (self.config.time_limit + 1e-8)
     g, b, old_pi_loss, old_surrogate_cost = self._cpo_grads(
         state.params, observation, action, advantage, cost_advantage,
         old_pi_logprob)
@@ -147,8 +170,9 @@ class CPO:
     return -objective.mean(), surrogate_cost.mean()
 
   @partial(jax.jit, static_argnums=0)
-  def update_critic(self, state: utils.LearningState, observation: jnp.ndarray,
-                    cost_return: jnp.ndarray) -> [utils.LearningState, dict]:
+  def update_safety_critic(
+      self, state: utils.LearningState, observation: jnp.ndarray,
+      cost_return: jnp.ndarray) -> [utils.LearningState, dict]:
 
     def safety_critic_loss(params: hk.Params) -> float:
       return -self.safety_critic.apply(

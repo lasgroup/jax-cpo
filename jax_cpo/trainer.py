@@ -46,12 +46,11 @@ def on_episode_end(episode: es.EpisodeSummary, logger: logging.TrainingLogger,
     logger.step += np.asarray(episode['reward']).size
 
 
-def log_videos(logger: logging.TrainingLogger, videos: Dict, epoch: int):
-  for task_name, video in videos.items():
-    logger.log_video(
-        np.asarray(video).transpose([1, 0, 2, 3, 4])[:1],
-        task_name + '_video',
-        step=epoch)
+def log_videos(logger: logging.TrainingLogger, videos: List, epoch: int):
+  logger.log_video(
+      np.asarray(videos).transpose([1, 0, 2, 3, 4])[:1],
+      'evaluation/video',
+      step=epoch)
 
 
 class Trainer:
@@ -103,20 +102,20 @@ class Trainer:
     for epoch in range(epoch, epochs or config.epochs):
       print('Training epoch #{}'.format(epoch))
       results = es.interact(
-          agent, env, self.config.steps_per_epoch, True,
+          agent, env, self.config.train_steps_per_epoch, True,
           lambda episode: on_episode_end(episode, logger, True))
-      summary, *_ = evaluation_summary(results, 'on_policy_evaluation')
+      summary = evaluation_summary(results, 'on_policy_evaluation')
       logger.log_summary(summary, epoch)
       if epoch % config.eval_every == 0:
         print('Evaluating...')
         results = es.interact(
-            self.agent, self.env, self.config.steps_per_epoch, True,
+            self.agent, self.env, self.config.test_steps_per_epoch, False,
             lambda episode: on_episode_end(episode, self.logger, True),
             self.config.render_episodes)
-        summary, reward_returns, cost_returns, videos = evaluation_summary(
-            results)
+        summary = evaluation_summary(results)
         logger.log_summary(summary, epoch)
-        log_videos(logger, videos, epochs)
+        if videos := summary.get('evaluation/frames', []):
+          log_videos(logger, videos, epochs)
       self.epoch = epoch + 1
       state_writer.write(self.state)
     logger.flush()

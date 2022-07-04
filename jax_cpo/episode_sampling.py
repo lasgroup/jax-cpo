@@ -5,6 +5,7 @@ import numpy as np
 from tqdm import tqdm
 
 from jax_cpo import cpo
+from jax_cpo import transition as t
 from jax_cpo import episodic_async_env as esye
 
 EpisodeSummary = Dict[str, List]
@@ -33,7 +34,7 @@ def interact(agent: cpo.CPO,
       actions = agent(observations, train)
       next_observations, rewards, dones, infos = environment.step(actions)
       costs = np.array([info.get('cost', 0) for info in infos])
-      transition = Transition(
+      transition = t.Transition(
           *map(lambda x: x[:discard], (observations, next_observations, actions,
                                        rewards, costs, dones, infos)))
       episodes[-1] = _append(transition, episodes[-1])
@@ -54,7 +55,7 @@ def interact(agent: cpo.CPO,
   return episodes
 
 
-def _append(transition: Transition, episode: DefaultDict) -> DefaultDict:
+def _append(transition: t.Transition, episode: DefaultDict) -> DefaultDict:
   episode['observation'].append(transition.observation)
   episode['action'].append(transition.action)
   episode['reward'].append(transition.reward)
