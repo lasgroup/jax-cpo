@@ -1,7 +1,69 @@
+from typing import Callable, Tuple, Any, Dict, NamedTuple
+
+import chex
+import haiku as hk
+import jax.numpy as jnp
+import optax
+
+PRNGKey = jnp.ndarray
+
 from typing import Union
 
 import jax.numpy as jnp
 import jmp
+
+
+class LearningState(NamedTuple):
+  params: Union[hk.Params, chex.ArrayTree]
+  opt_state: optax.OptState
+
+
+class Learner:
+
+  def __init__(self, model: Union[hk.Transformed, hk.MultiTransformed,
+                                  chex.ArrayTree], seed: PRNGKey,
+               optimizer_config: Dict, precision: jmp.Policy,
+               *input_example: Any):
+    self.optimizer = optax.flatten(
+        optax.chain(
+            optax.clip_by_global_norm(
+                optimizer_config.get('clip', float('inf'))),
+            optax.scale_by_adam(eps=optimizer_config.get('eps', 1e-8)),
+            optax.scale(-optimizer_config.get('lr', 1e-3))))
+    self.model = model
+    if isinstance(model, (hk.Transformed, hk.MultiTransformed)):
+      self.params = self.model.init(seed, *input_example)
+    else:
+      self.params = model
+    self.opt_state = self.optimizer.init(self.params)
+    self.precision = precision
+
+  @property
+  def apply(self) -> Union[Callable, Tuple[Callable]]:
+    if isinstance(self.model, (hk.Transformed, hk.MultiTransformed)):
+      return self.model.apply
+    else:
+      return lambda: self.model
+
+  @property
+  def state(self):
+    return LearningState(self.params, self.opt_state)
+
+  @state.setter
+  def state(self, state: LearningState):
+    self.params = state.params
+    self.opt_state = state.opt_state
+
+  def grad_step(self, grads, state: LearningState):
+    params, opt_state = state
+    grads = self.precision.cast_to_param(grads)
+    updates, new_opt_state = self.optimizer.update(grads, opt_state, params)
+    new_params = optax.apply_updates(params, updates)
+    grads_finite = jmp.all_finite(grads)
+    new_params, new_opt_state = jmp.select_tree(grads_finite,
+                                                (new_params, new_opt_state),
+                                                (params, opt_state))
+    return LearningState(new_params, new_opt_state)
 
 
 def get_mixed_precision_policy(precision):

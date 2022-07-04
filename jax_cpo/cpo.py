@@ -1,8 +1,9 @@
 from functools import partial
 from types import SimpleNamespace
-from typing import Callable
+from typing import Callable, NamedTuple
 
 import chex
+import optax
 import haiku as hk
 import jax
 import jax.numpy as jnp
@@ -13,8 +14,18 @@ from tensorflow_probability.substrates import jax as tfp
 
 from jax_cpo import logging
 from jax_cpo import utils
+from jax_cpo import episodic_trajectory_buffer as etb
 
 tfd = tfp.distributions
+
+discounted_cumsum = jax.vmap(utils.discounted_cumsum, in_axes=[0, None])
+
+
+class Evaluation(NamedTuple):
+  advantage: np.ndarray
+  return_: np.ndarray
+  cost_advantage: np.ndarray
+  cost_return: np.ndarray
 
 
 class CPO:
@@ -23,15 +34,34 @@ class CPO:
                action_space: spaces.Space, config: SimpleNamespace,
                logger: logging.TrainingLogger, actor: hk.Transformed,
                critic: hk.Transformed, safety_critic: hk.Transformed):
-    super(CPO, self).__init__(observation_space, action_space, config, logger,
-                              actor, critic, safety_critic)
+    self.config = config
+    self.logger = logger
+    self.rng_seq = hk.PRNGSequence(config.seed)
+    self.training_step = 0
+    num_steps = self.config.time_limit // self.config.action_repeat
+    self.buffer = etb.EpisodicTrajectoryBuffer(self.config.num_trajectories,
+                                               num_steps,
+                                               observation_space.shape,
+                                               action_space.shape)
+    self.actor = utils.Learner(
+        actor, next(self.rng_seq), config.actor_opt,
+        utils.get_mixed_precision_policy(config.precision),
+        observation_space.sample())
+    self.critic = utils.Learner(
+        critic, next(self.rng_seq), config.critic_opt,
+        utils.get_mixed_precision_policy(config.precision),
+        observation_space.sample())
+    self.safety_critic = utils.Learner(
+        safety_critic, next(self.rng_seq), config.critic_opt,
+        utils.get_mixed_precision_policy(config.precision),
+        observation_space.sample())
     self.margin = 0.
 
   def train(self, trajectory_data):
-    eval_ = self.evaluate_with_safety(self.critic.params,
-                                      self.safety_critic.params,
-                                      trajectory_data.o, trajectory_data.r,
-                                      trajectory_data.c)
+    eval_ = self.evaluate_trajectories(self.critic.params,
+                                       self.safety_critic.params,
+                                       trajectory_data.o, trajectory_data.r,
+                                       trajectory_data.c)
     constraint = trajectory_data.c.sum(1).mean()
     self.actor.state, actor_report = self.update_actor(
         self.actor.state, trajectory_data.o[:, :-1], trajectory_data.a,
@@ -47,7 +77,8 @@ class CPO:
       self.logger[k] = v.mean()
 
   @partial(jax.jit, static_argnums=0)
-  def update_actor(self, state: utils.LearningState, *args) -> [utils.LearningState, dict]:
+  def update_actor(self, state: utils.LearningState,
+                   *args) -> [utils.LearningState, dict]:
     observation, action, advantage, cost_advantage, constraint = args
     old_pi = self.actor.apply(state.params, observation)
     old_pi_logprob = old_pi.log_prob(action)
@@ -114,6 +145,74 @@ class CPO:
         surr_advantage + self.config.entropy_regularization * pi.entropy())
     surrogate_cost = ratio * cost_advantage
     return -objective.mean(), surrogate_cost.mean()
+
+  @partial(jax.jit, static_argnums=0)
+  def update_critic(self, state: utils.LearningState, observation: jnp.ndarray,
+                    cost_return: jnp.ndarray) -> [utils.LearningState, dict]:
+
+    def safety_critic_loss(params: hk.Params) -> float:
+      return -self.safety_critic.apply(
+          params, observation).log_prob(cost_return).mean()
+
+    def update(critic_state: utils.LearningState):
+      loss, grads = jax.value_and_grad(safety_critic_loss)(critic_state.params)
+      new_critic_state = self.safety_critic.grad_step(grads, critic_state)
+      return new_critic_state, {
+          'agent/safety_critic/loss': loss,
+          'agent/safety_critic/grad': optax.global_norm(grads)
+      }
+
+    return jax.lax.scan(lambda state, _: update(state), state,
+                        jnp.arange(self.config.vf_iters))
+
+  @partial(jax.jit, static_argnums=0)
+  def update_critic(self, state: utils.LearningState, observation: jnp.ndarray,
+                    return_: jnp.ndarray) -> [utils.LearningState, dict]:
+
+    def critic_loss(params: hk.Params):
+      return -self.critic.apply(params, observation).log_prob(return_).mean()
+
+    def update(critic_state: utils.LearningState):
+      loss, grads = jax.value_and_grad(critic_loss)(critic_state.params)
+      new_critic_state = self.critic.grad_step(grads, critic_state)
+      return new_critic_state, {
+          'agent/critic/loss': loss,
+          'agent/critic/grad': optax.global_norm(grads)
+      }
+
+    return jax.lax.scan(lambda state, _: update(state), state,
+                        jnp.arange(self.config.vf_iters))
+
+  @partial(jax.jit, static_argnums=0)
+  def evaluate_trajectories(self, critic_params: hk.Params,
+                            safety_critic_params: hk.Params,
+                            observation: jnp.ndarray, reward: jnp.ndarray,
+                            cost: jnp.ndarray) -> Evaluation:
+    value = self.critic.apply(critic_params, observation).mode()
+    diff = reward + (self.config.discount * value[..., 1:] - value[..., :-1])
+    advantage = discounted_cumsum(diff,
+                                  self.config.lambda_ * self.config.discount)
+    mean, stddev = advantage.mean(), advantage.std()
+    return_ = discounted_cumsum(reward, self.config.discount)
+    advantage = (advantage - mean) / (stddev + 1e-8)
+    if not self.safe:
+      return Evaluation(advantage, return_, jnp.zeros_like(advantage),
+                        jnp.zeros_like(return_))
+    cost_value = self.safety_critic.apply(safety_critic_params,
+                                          observation).mode()
+    cost_return = discounted_cumsum(cost, self.config.cost_discount)
+    diff = cost + (
+        self.config.cost_discount * cost_value[..., 1:] - cost_value[..., :-1])
+    cost_advantage = discounted_cumsum(
+        diff, self.config.lambda_ * self.config.cost_discount)
+    # Centering advantage, but not normalize, as in
+    # https://github.com/openai/safety-starter-agents/blob/4151a283967520ee000f03b3a79bf35262ff3509/safe_rl/pg/buffer.py#L71
+    cost_advantage -= cost_advantage.mean()
+    return Evaluation(advantage, return_, cost_advantage, cost_return)
+
+  @property
+  def safe(self):
+    return self.config.safe
 
 
 def step_direction(g: chex.ArrayTree,
