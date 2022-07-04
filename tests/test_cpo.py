@@ -1,9 +1,9 @@
 import os
 import pytest
 
-from jax_cpo import cpo
+import jax_cpo
 from jax_cpo import config as options
-from jax_cpo import trainer
+from jax_cpo import trainer as t
 
 
 @pytest.mark.not_safe
@@ -27,8 +27,8 @@ def test_not_safe():
     from jax.config import config as jax_config
     jax_config.update('jax_disable_jit', True)
   path = os.path.join(config.log_dir, 'state.pkl')
-  with Trainer.from_pickle(config) if os.path.exists(path) else trainer.Trainer(
-      config=config, make_agent=agents.make,
+  with t.Trainer.from_pickle(config) if os.path.exists(path) else t.Trainer(
+      config=config, make_agent=jax_cpo.make,
       make_env=lambda: make_env(config)) as trainer:
     objective, constraint = trainer.train()
   assert objective[config.task] > 115.
