@@ -102,7 +102,8 @@ class CPO:
           self.safety_critic.state, trajectory_data.o[:, :-1],
           eval_.cost_return)
       critic_report.update(safety_report)
-    for k, v in {**actor_report, **critic_report}.items():
+    info = {**actor_report, **critic_report, 'agent/margin': self.margin}
+    for k, v in info.items():
       self.logger[k] = v.mean()
 
   @partial(jax.jit, static_argnums=0)
@@ -142,7 +143,6 @@ class CPO:
                                     self.config.backtrack_iters,
                                     self.config.backtrack_coeff,
                                     self.config.target_kl)
-    info['agent/margin'] = self.margin
     return utils.LearningState(new_params, self.actor.opt_state), info
 
   def _cpo_grads(self, pi_params: hk.Params, observation: jnp.ndarray,
