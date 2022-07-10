@@ -61,7 +61,7 @@ def test_safe():
   def make_env(config):
     import safe_adaptation_gym
     env = safe_adaptation_gym.make(
-        config.robot,
+        'point',
         config.task,
         config={
             'obstacles_size_noise_scale': 0.,
