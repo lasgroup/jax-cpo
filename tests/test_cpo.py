@@ -62,7 +62,7 @@ def test_safe():
     import safe_adaptation_gym
     env = safe_adaptation_gym.make(
         'point',
-        config.task,
+        'go_to_goal',
         config={
             'obstacles_size_noise_scale': 0.,
             'robot_ctrl_range_scale': 0.
