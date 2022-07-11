@@ -7,7 +7,7 @@ required = [
     'tensorflow', 'tensorflow-probability', 'moviepy', 'gym'
 ]
 
-extras = {'dev': ['pytest>=4.4.0', 'mujoco-py']}
+extras = {'dev': ['pytest>=4.4.0', 'mujoco-py', 'safe-adaptation-gym']}
 
 setup(
     name='jax-cpo',
@@ -16,4 +16,7 @@ setup(
     python_requires='>3.8',
     include_package_data=True,
     install_requires=required,
+    dependency_links=[
+        'http://github.com/lasgroup/safe-adaptation-gym/tarball/main#egg=safe-adaptation-gym'
+    ],
     extras_require=extras)
