@@ -32,7 +32,8 @@ def interact(agent: cpo.CPO,
         frames = environment.render(render_mode)
         episodes[-1]['frames'].append(frames)
       actions = agent(observations, train)
-      next_observations, rewards, dones, infos = environment.step(actions)
+      next_observations, rewards, dones, truncated, infos = environment.step(actions)
+      dones = np.logical_or(dones, truncated)
       costs = np.array([info.get('cost', 0) for info in infos])
       transition = t.Transition(
           *map(lambda x: x[:discard], (observations, next_observations, actions,

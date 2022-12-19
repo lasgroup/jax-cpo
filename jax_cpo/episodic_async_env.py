@@ -117,9 +117,10 @@ class EpisodicAsync(VectorEnv):
       parent.send((Protocol.CALL, payload))
 
   def step_wait(self, **kwargs):
-    observations, rewards, dones, infos = zip(*self._receive())
+    observations, rewards, dones, truncated, infos = zip(*self._receive())
     return np.asarray(observations), np.asarray(rewards), np.asarray(
-        dones, dtype=bool), infos
+        dones, dtype=bool), np.asarray(
+        truncated, dtype=bool), infos
 
   def call_async(self, name, *args, **kwargs):
     if self._env is not None:
@@ -145,11 +146,10 @@ class EpisodicAsync(VectorEnv):
             seed: Optional[Union[int, List[int]]] = None,
             return_info: bool = False,
             options: Optional[dict] = None):
-    return self.reset_wait(seed, return_info, options)
+    return self.reset_wait(seed, options)
 
   def reset_wait(self,
                  seed: Optional[Union[int, List[int]]] = None,
-                 return_info: bool = False,
                  options: Optional[dict] = None):
     if seed is None:
       seed = [None for _ in range(self.num_envs)]
@@ -159,11 +159,11 @@ class EpisodicAsync(VectorEnv):
     for parent, s in zip(self.parents, seed):
       payload = 'reset', (), {
           'seed': s,
-          'return_info': return_info,
           'options': options
       }
       parent.send((Protocol.CALL, payload))
-    return np.asarray(self.call_wait())
+    results = self.call_wait()
+    return np.asarray([x[0] for x in results])
 
 
 def _worker(ctor, conn, time_limit):

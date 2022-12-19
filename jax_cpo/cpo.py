@@ -104,7 +104,7 @@ class CPO:
       critic_report.update(safety_report)
     info = {**actor_report, **critic_report, 'agent/margin': self.margin}
     for k, v in info.items():
-      self.logger[k] = v.mean()
+      self.logger[k] = np.asarray(v).mean()
 
   @partial(jax.jit, static_argnums=0)
   def update_actor(self, state: utils.LearningState,
@@ -268,16 +268,10 @@ def step_direction(g: chex.ArrayTree,
     s = jnp.dot(w, damped_d_kl_hvp(w))
     A = q - r**2 / s
     B = 2. * target_kl - c**2 / s
-    optim_case = jax.lax.cond(
-        jax.lax.bitwise_and(c < 0, B < 0), lambda: 3, lambda: 0)
-    optim_case = jax.lax.cond(
-        jax.lax.bitwise_and(
-            jax.lax.bitwise_and(optim_case == 0, c < 0.), B >= 0.), lambda: 2,
-        lambda: 0)
-    optim_case = jax.lax.cond(
-        jax.lax.bitwise_and(
-            jax.lax.bitwise_and(optim_case == 0, c >= 0.), B >= 0), lambda: 1,
-        lambda: 0)
+    # Implementation of the elif conditions in https://github.com/openai/safety-starter-agents/blob/4151a283967520ee000f03b3a79bf35262ff3509/safe_rl/pg/agents.py#L282
+    optim_case = jax.lax.cond((c < 0.) & (B < 0.), lambda: 3, lambda: 0)
+    optim_case = _maybe_update_case(optim_case, (c < 0.) & (B >= 0.), 2, 0)
+    optim_case = _maybe_update_case(optim_case, (c >= 0.) & (B >= 0.), 1, 0)
     return optim_case, w, r, s, A, B
 
   if safe:
@@ -370,3 +364,9 @@ def backtracking(direction: jnp.ndarray, evaluate_policy: Callable,
 # https://jax.readthedocs.io/en/latest/notebooks/autodiff_cookbook.html
 def hvp(f, primals, tangents):
   return jax.jvp(jax.grad(f), primals, tangents)[1]
+
+
+def _maybe_update_case(optim_case, pred, true_val, false_val):
+  return jax.lax.cond(
+      optim_case != 0, lambda: optim_case,
+      lambda: jax.lax.cond(pred, lambda: true_val, lambda: false_val))

@@ -1,4 +1,5 @@
-from typing import Callable, Tuple, Any, Dict, NamedTuple
+from typing import Callable, Tuple, Any, Dict, NamedTuple, TypeVar
+import functools
 
 import chex
 import haiku as hk
@@ -9,8 +10,11 @@ PRNGKey = jnp.ndarray
 
 from typing import Union
 
+import jax
 import jax.numpy as jnp
 import jmp
+
+T = TypeVar("T")
 
 
 class LearningState(NamedTuple):
@@ -60,11 +64,16 @@ class Learner:
     updates, new_opt_state = self.optimizer.update(grads, opt_state, params)
     new_params = optax.apply_updates(params, updates)
     grads_finite = jmp.all_finite(grads)
-    new_params, new_opt_state = jmp.select_tree(grads_finite,
+    new_params, new_opt_state = select_tree(grads_finite,
                                                 (new_params, new_opt_state),
                                                 (params, opt_state))
     return LearningState(new_params, new_opt_state)
 
+
+def select_tree(pred: jnp.ndarray, a: T, b: T) -> T:
+    """Selects a pytree based on the given predicate."""
+    assert pred.ndim == 0 and pred.dtype == jnp.bool_, "expected boolean scalar"
+    return jax.tree_map(functools.partial(jax.lax.select, pred), a, b)
 
 def get_mixed_precision_policy(precision):
   policy = ('params=float32,compute=float' + str(precision) + ',output=float' +
