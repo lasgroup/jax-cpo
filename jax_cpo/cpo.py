@@ -62,7 +62,6 @@ class CPO:
                **kwargs) -> np.ndarray:
     if self.buffer.full and train:
       self.train(self.buffer.dump())
-      self.logger.log_metrics(self.training_step)
     action = self.policy(observation, self.actor.params, next(self.rng_seq),
                          train)
     return action
