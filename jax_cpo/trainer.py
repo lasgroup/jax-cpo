@@ -1,7 +1,7 @@
 import os
 from collections import defaultdict
 from types import SimpleNamespace
-from typing import Optional, List, Dict, Callable
+from typing import Optional, List, Dict, Callable, Tuple
 
 import cloudpickle
 import numpy as np
@@ -15,16 +15,14 @@ from jax_cpo import logging
 
 
 def evaluation_summary(episodes: es.IterationSummary,
-                       prefix: str = 'evaluation') -> Dict:
+                       prefix: str = 'evaluation') -> Tuple[Dict, List]:
   summary = defaultdict(float)
   return_ = lambda arr: np.asarray(arr).sum(0).mean()
   summary[f'{prefix}/reward_return'] = return_(
       [episode['reward'] for episode in episodes])
   summary[f'{prefix}/cost_return'] = return_(
       [episode['cost'] for episode in episodes])
-  if frames := episodes[0].get('frames', []):
-    summary[f'{prefix}/frames'] = frames
-  return summary
+  return summary, episodes[0].get('frames', [])
 
 
 def on_episode_end(episode: es.EpisodeSummary, logger: logging.TrainingLogger,
@@ -104,7 +102,7 @@ class Trainer:
       results = es.interact(
           agent, env, self.config.train_steps_per_epoch, True,
           lambda episode: on_episode_end(episode, logger, True))
-      summary = evaluation_summary(results, 'on_policy_evaluation')
+      summary, _ = evaluation_summary(results, 'on_policy_evaluation')
       logger.log_summary(summary, epoch)
       if epoch % config.eval_every == 0:
         print('Evaluating...')
@@ -112,9 +110,9 @@ class Trainer:
             self.agent, self.env, self.config.test_steps_per_epoch, False,
             lambda episode: on_episode_end(episode, self.logger, True),
             self.config.render_episodes)
-        summary = evaluation_summary(results)
+        summary, videos = evaluation_summary(results)
         logger.log_summary(summary, epoch)
-        if videos := summary.get('evaluation/frames', []):
+        if videos:
           log_videos(logger, videos, epochs)
       self.epoch = epoch + 1
       state_writer.write(self.state)
