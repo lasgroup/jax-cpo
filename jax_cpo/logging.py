@@ -40,14 +40,15 @@ class TrainingLogger:
     if flush:
       self._writer.flush()
 
-  def log_metrics(self, step: Optional[int] = None, flush: bool = False):
+  def log_summary(self,
+                  summary: dict,
+                  step: Optional[int] = None,
+                  flush: bool = False):
     step = step if step is not None else self.step
-    print("\n----Training step {} summary----".format(step))
-    for k, v in self._metrics.items():
-      val = float(v.result())
-      print("{:<40} {:<.4f}".format(k, val))
-      self._writer.add_scalar(k, val, step)
-      v.reset_states()
+    for k, v in summary.items():
+      self._writer.add_scalar(k, float(v), step)
+    with open(os.path.join(self.log_dir, 'summary.jsonl'), 'a') as file:
+      file.write(json.dumps({'step': step, **summary}) + '\n')
     if flush:
       self._writer.flush()
 
