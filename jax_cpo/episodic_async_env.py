@@ -134,7 +134,7 @@ class EpisodicAsync(VectorEnv):
 
   def render(self, mode="human"):
     name = 'render'
-    args = (mode,)
+    args = ()
     kwargs = dict()
     if self._env is not None:
       return functools.partial(getattr(self._env, name), *args, **kwargs)
