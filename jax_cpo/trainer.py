@@ -17,7 +17,7 @@ from jax_cpo import logging
 def evaluation_summary(episodes: es.IterationSummary,
                        prefix: str = 'evaluation') -> Tuple[Dict, List]:
   summary = defaultdict(float)
-  return_ = lambda arr: np.asarray(arr).sum(0).mean()
+  return_ = lambda arr: np.asarray(arr).sum(1).mean()
   summary[f'{prefix}/reward_return'] = return_(
       [episode['reward'] for episode in episodes])
   summary[f'{prefix}/cost_return'] = return_(
