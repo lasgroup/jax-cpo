@@ -14,6 +14,8 @@ class Transition(NamedTuple):
 
   @property
   def last(self):
+    if self.done.any():
+      assert self.done.all()
     return self.done.all()
 
   @property
