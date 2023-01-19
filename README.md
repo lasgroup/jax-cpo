@@ -1,5 +1,5 @@
 # Constrained Policy Optimization with JAX
-Constrained Policy Optimization is a safe reinforcement learning that solves constrained Markov decision processes to ensure safety. Our implementation is a port of the [original OpenAI implementation](https://github.com/openai/safety-starter-agents) to JAX.
+Constrained Policy Optimization is a safe reinforcement learning algorithm that solves constrained Markov decision processes to ensure safety. Our implementation is a port of the [original OpenAI implementation](https://github.com/openai/safety-starter-agents) to JAX.
 
 ## Install
 Create a self-contained environment (via [conda](https://docs.conda.io/en/latest/) or [virtualenv](https://virtualenv.pypa.io/en/latest/)); for instance:
