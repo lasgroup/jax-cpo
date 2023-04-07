@@ -13,7 +13,7 @@ defaults:
   render_mode: rgb_array
   jit: True
   precision: 32
-  parallel_envs: 10
+  parallel_envs: 20
   entropy_regularization: 0.
   vf_iters: 80
   actor: {layers: [256, 256], min_stddev: 0.01, max_stddev: 10., activation: jnn.tanh, initialization: glorot}

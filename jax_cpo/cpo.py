@@ -104,6 +104,7 @@ class CPO:
     info = {**actor_report, **critic_report, 'agent/margin': self.margin}
     for k, v in info.items():
       self.logger[k] = np.asarray(v).mean()
+    self.logger.log_metrics()
 
   @partial(jax.jit, static_argnums=0)
   def update_actor(self, state: utils.LearningState,

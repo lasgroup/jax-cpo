@@ -52,6 +52,17 @@ class TrainingLogger:
     if flush:
       self._writer.flush()
 
+  def log_metrics(self, step: Optional[int] = None, flush: bool = False):
+    step = step if step is not None else self.step
+    print("\n----Training step {} summary----".format(step))
+    for k, v in self._metrics.items():
+        val = float(v.result())
+        print("{:<40} {:<.4f}".format(k, val))
+        self._writer.add_scalar(k, val, step)
+        v.reset_states()
+    if flush:
+        self._writer.flush()
+
   def log_video(self,
                 images,
                 name='policy',
