@@ -60,6 +60,7 @@ def test_safe():
 
   def make_env(config):
     import safe_adaptation_gym
+    from gym.wrappers.compatibility import EnvCompatibility
     env = safe_adaptation_gym.make(
         'point',
         'go_to_goal',
@@ -67,6 +68,7 @@ def test_safe():
             'obstacles_size_noise_scale': 0.,
             'robot_ctrl_range_scale': 0.
         })
+    env = EnvCompatibility(env)
     return env
 
   config = options.load_config([
