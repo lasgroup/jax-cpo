@@ -28,4 +28,5 @@ backtrack_coeff: 0.8
 backtrack_iters: 10
 damping_coeff: 0.1
 margin_lr: 0.05
-
+robot: point
+task: go_to_goal

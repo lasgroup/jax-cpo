@@ -40,10 +40,7 @@ def main(config):
         import safe_adaptation_gym
         from gym.wrappers.compatibility import EnvCompatibility
 
-        env = safe_adaptation_gym.make(
-            "point",
-            "go_to_goal",
-        )
+        env = safe_adaptation_gym.make(config.robot, config.task)
         env = EnvCompatibility(env)
         return env
 
