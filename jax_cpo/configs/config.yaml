@@ -1,3 +1,18 @@
+hydra:
+  run:
+    dir: ${log_dir}/${now:%Y-%m-%d}/${now:%H-%M-%S}
+  sweep:
+    dir: ${log_dir}/${hydra.job.name}
+    subdir: ${hydra.job.override_dirname}/seed=${seed}
+  job:
+    config:
+      override_dirname:
+        exclude_keys:
+          - log_dir
+          - training.seed
+          - wandb
+    chdir: true
+
 safe: true
 cost_limit: 25
 log_dir: results
@@ -15,14 +30,28 @@ precision: 32
 parallel_envs: 30
 entropy_regularization: 0.
 vf_iters: 80
-actor: {layers: [256, 256], min_stddev: 0.01, max_stddev: 10., activation: jnn.tanh, initialization: glorot}
-critic: {layers: [256, 256], dist: normal, activation: jnn.tanh, name: 'critic', initialization: glorot}
+actor:
+  {
+    layers: [256, 256],
+    min_stddev: 0.01,
+    max_stddev: 10.,
+    activation: jnn.tanh,
+    initialization: glorot,
+  }
+critic:
+  {
+    layers: [256, 256],
+    dist: normal,
+    activation: jnn.tanh,
+    name: "critic",
+    initialization: glorot,
+  }
 discount: 0.99
 cost_discount: 0.99
 lambda_: 0.97
 num_trajectories: 30
 actor_opt: {}
-critic_opt: {lr: 1e-3, eps: 1e-5, clip: 0.5}
+critic_opt: { lr: 1e-3, eps: 1e-5, clip: 0.5 }
 target_kl: 0.01
 backtrack_coeff: 0.8
 backtrack_iters: 10

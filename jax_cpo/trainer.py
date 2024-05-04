@@ -75,8 +75,9 @@ class Trainer:
     self.env = None
 
   def __enter__(self):
-    self.state_writer = logging.StateWriter(self.config.log_dir)
-    self.logger = logging.TrainingLogger(self.config.log_dir)
+    log_path = os.getcwd()
+    self.state_writer = logging.StateWriter(log_path)
+    self.logger = logging.TrainingLogger(log_path)
     self.env = episodic_async_env.EpisodicAsync(self.make_env,
                                                 self.config.parallel_envs,
                                                 self.config.time_limit)
