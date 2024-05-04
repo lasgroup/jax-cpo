@@ -1,32 +1,31 @@
-defaults:
-  safe: False
-  cost_limit: 25
-  log_dir: results
-  seed: 0
-  time_limit: 1000
-  epochs: 200
-  train_steps_per_epoch: 10000
-  test_steps_per_epoch: 10000
-  eval_every: 5
-  action_repeat: 1
-  render_episodes: 1
-  render_mode: rgb_array
-  jit: True
-  precision: 32
-  parallel_envs: 30
-  entropy_regularization: 0.
-  vf_iters: 80
-  actor: {layers: [256, 256], min_stddev: 0.01, max_stddev: 10., activation: jnn.tanh, initialization: glorot}
-  critic: {layers: [256, 256], dist: normal, activation: jnn.tanh, name: 'critic', initialization: glorot}
-  discount: 0.99
-  cost_discount: 0.99
-  lambda_: 0.97
-  num_trajectories: 30
-  actor_opt: {}
-  critic_opt: {lr: 1e-3, eps: 1e-5, clip: 0.5}
-  target_kl: 0.01
-  backtrack_coeff: 0.8
-  backtrack_iters: 10
-  damping_coeff: 0.1
-  margin_lr: 0.05
+safe: true
+cost_limit: 25
+log_dir: results
+seed: 0
+time_limit: 1000
+epochs: 334
+train_steps_per_epoch: 30000
+test_steps_per_epoch: 10000
+eval_every: 5
+action_repeat: 1
+render_episodes: 0
+render_mode: rgb_array
+jit: True
+precision: 32
+parallel_envs: 30
+entropy_regularization: 0.
+vf_iters: 80
+actor: {layers: [256, 256], min_stddev: 0.01, max_stddev: 10., activation: jnn.tanh, initialization: glorot}
+critic: {layers: [256, 256], dist: normal, activation: jnn.tanh, name: 'critic', initialization: glorot}
+discount: 0.99
+cost_discount: 0.99
+lambda_: 0.97
+num_trajectories: 30
+actor_opt: {}
+critic_opt: {lr: 1e-3, eps: 1e-5, clip: 0.5}
+target_kl: 0.01
+backtrack_coeff: 0.8
+backtrack_iters: 10
+damping_coeff: 0.1
+margin_lr: 0.05
 
