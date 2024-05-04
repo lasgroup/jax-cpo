@@ -34,7 +34,7 @@ def make(
     )
 
 
-@hydra.main(version_base=None, config_path="jax_cpo", config_name="configs")
+@hydra.main(version_base=None, config_path="jax_cpo/configs", config_name="config")
 def main(config):
     def make_env(config):
         import safe_adaptation_gym
