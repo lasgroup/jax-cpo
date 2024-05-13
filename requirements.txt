@@ -2,7 +2,6 @@ absl-py==1.3.0
 astunparse==1.6.3
 attrs==22.1.0
 cachetools==5.2.0
-certifi @ file:///croot/certifi_1665076670883/work/certifi
 cffi==1.15.1
 charset-normalizer==2.1.1
 chex==0.1.5
@@ -30,9 +29,7 @@ imageio==2.23.0
 imageio-ffmpeg==0.4.7
 importlib-metadata==5.2.0
 iniconfig==1.1.1
-jax==0.4.1
 -e git+ssh://git@github.com/lasgroup/jax-cpo.git@100d365b9cd42f064d460680d03423b29fc38f09#egg=jax_cpo
-jaxlib==0.4.1
 jmp==0.0.2
 keras==2.11.0
 labmaze==1.0.6
