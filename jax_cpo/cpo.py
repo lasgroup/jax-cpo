@@ -12,14 +12,29 @@ from gym import spaces
 from jax.scipy import sparse
 from tensorflow_probability.substrates import jax as tfp
 
-from jax_cpo.logging import TrainingLogger
-from jax_cpo import utils
-from jax_cpo import transition as t
+from jax_cpo.rl.epoch_summary import EpochSummary
+from jax_cpo.rl.metrics import MetricsMonitor
+from jax_cpo.rl.trajectory import TrajectoryData
 from jax_cpo import episodic_trajectory_buffer as etb
+from jax_cpo.rl.learner import Learner, LearningState
+from jax_cpo.rl.types import Report
 
 tfd = tfp.distributions
 
-discounted_cumsum = jax.vmap(utils.discounted_cumsum, in_axes=[0, None])
+
+@jax.vmap(in_axes=[0, None])
+def discounted_cumsum(x: jnp.ndarray, discount: float) -> jnp.ndarray:
+    """
+    Compute a discounted cummulative sum of vector x. [x0, x1, x2] ->
+    [x0 + discount * x1 + discount^2 * x2,
+    x1 + discount * x2,
+    x2]
+    """
+    # Divide by discount to have the first discount value from 1: [1, discount,
+    # discount^2 ...]
+    scales = jnp.cumprod(jnp.ones_like(x) * discount) / discount
+    # Flip scales since jnp.convolve flips it as default.
+    return jnp.convolve(x, scales[::-1])[-x.shape[0] :]
 
 
 class Evaluation(NamedTuple):
@@ -35,15 +50,12 @@ class CPO:
         observation_space: spaces.Space,
         action_space: spaces.Space,
         config: SimpleNamespace,
-        logger: TrainingLogger,
         actor: hk.Transformed,
         critic: hk.Transformed,
         safety_critic: hk.Transformed,
     ):
         self.config = config
-        self.logger = logger
         self.rng_seq = hk.PRNGSequence(config.seed)
-        self.training_step = 0
         num_steps = self.config.time_limit // self.config.action_repeat
         self.buffer = etb.EpisodicTrajectoryBuffer(
             self.config.num_trajectories,
@@ -51,28 +63,26 @@ class CPO:
             observation_space.shape,
             action_space.shape,
         )
-        self.actor = utils.Learner(
+        self.actor = Learner(
             actor,
             next(self.rng_seq),
             config.actor_opt,
-            utils.get_mixed_precision_policy(config.precision),
             observation_space.sample(),
         )
-        self.critic = utils.Learner(
+        self.critic = Learner(
             critic,
             next(self.rng_seq),
             config.critic_opt,
-            utils.get_mixed_precision_policy(config.precision),
             observation_space.sample(),
         )
-        self.safety_critic = utils.Learner(
+        self.safety_critic = Learner(
             safety_critic,
             next(self.rng_seq),
             config.critic_opt,
-            utils.get_mixed_precision_policy(config.precision),
             observation_space.sample(),
         )
         self.margin = 0.0
+        self.metrics_monitor = MetricsMonitor()
 
     def __call__(
         self, observation: np.ndarray, train: bool, *args, **kwargs
@@ -94,19 +104,25 @@ class CPO:
         action = policy.sample(seed=key) if training else policy.mode()
         return action
 
-    def observe(self, transition: t.Transition):
-        self.buffer.add(transition)
-        self.training_step += sum(transition.steps)
+    def observe(self, trajectory: TrajectoryData):
+        self.buffer.add(trajectory)
 
-    def train(self, trajectory_data: etb.TrajectoryData):
+    def report(self, summary: EpochSummary, epoch: int, step: int) -> Report:
+        metrics = {
+            k: float(v.result.mean) for k, v in self.metrics_monitor.metrics.items()
+        }
+        self.metrics_monitor.reset()
+        return Report(metrics)
+
+    def train(self, trajectory_data: TrajectoryData):
         eval_ = self.evaluate_trajectories(
             self.critic.params,
             self.safety_critic.params,
-            trajectory_data.o,
-            trajectory_data.r,
-            trajectory_data.c,
+            trajectory_data.observation,
+            trajectory_data.reward,
+            trajectory_data.cost,
         )
-        constraint = trajectory_data.c.sum(1).mean()
+        constraint = trajectory_data.cost.sum(1).mean()
         # https://github.com/openai/safety-starter-agents/blob/4151a283967520ee000f03b3a79bf35262ff3509/safe_rl/pg/agents.py#L260
         c = constraint - self.config.cost_limit
         self.margin = max(0, self.margin + self.config.margin_lr * c)
@@ -114,29 +130,26 @@ class CPO:
         c /= self.config.time_limit + 1e-8
         self.actor.state, actor_report = self.update_actor(
             self.actor.state,
-            trajectory_data.o[:, :-1],
-            trajectory_data.a,
+            trajectory_data.observation[:, :-1],
+            trajectory_data.action,
             eval_.advantage,
             eval_.cost_advantage,
             c,
         )
         self.critic.state, critic_report = self.update_critic(
-            self.critic.state, trajectory_data.o[:, :-1], eval_.return_
+            self.critic.state, trajectory_data.observation[:, :-1], eval_.return_
         )
         if self.safe:
             self.safety_critic.state, safety_report = self.update_safety_critic(
-                self.safety_critic.state, trajectory_data.o[:, :-1], eval_.cost_return
+                self.safety_critic.state, trajectory_data.observation[:, :-1], eval_.cost_return
             )
             critic_report.update(safety_report)
         info = {**actor_report, **critic_report, "agent/margin": self.margin}
         for k, v in info.items():
-            self.logger[k] = np.asarray(v).mean()
-        self.logger.log_metrics()
+            self.metrics_monitor[k] = np.asarray(v).mean()
 
     @partial(jax.jit, static_argnums=0)
-    def update_actor(
-        self, state: utils.LearningState, *args
-    ) -> tuple[utils.LearningState, dict]:
+    def update_actor(self, state: LearningState, *args) -> tuple[LearningState, dict]:
         observation, action, advantage, cost_advantage, c = args
         old_pi = self.actor.apply(state.params, observation)
         old_pi_logprob = old_pi.log_prob(action)
@@ -186,7 +199,7 @@ class CPO:
             self.config.backtrack_coeff,
             self.config.target_kl,
         )
-        return utils.LearningState(new_params, self.actor.opt_state), info
+        return LearningState(new_params, self.actor.opt_state), info
 
     def _cpo_grads(
         self,
@@ -221,10 +234,10 @@ class CPO:
     @partial(jax.jit, static_argnums=0)
     def update_safety_critic(
         self,
-        state: utils.LearningState,
+        state: LearningState,
         observation: jnp.ndarray,
         cost_return: jnp.ndarray,
-    ) -> [utils.LearningState, dict]:
+    ) -> tuple[LearningState, dict]:
         def safety_critic_loss(params: hk.Params) -> float:
             return (
                 -self.safety_critic.apply(params, observation)
@@ -232,7 +245,7 @@ class CPO:
                 .mean()
             )
 
-        def update(critic_state: utils.LearningState):
+        def update(critic_state: LearningState):
             loss, grads = jax.value_and_grad(safety_critic_loss)(critic_state.params)
             new_critic_state = self.safety_critic.grad_step(grads, critic_state)
             return new_critic_state, {
@@ -246,12 +259,12 @@ class CPO:
 
     @partial(jax.jit, static_argnums=0)
     def update_critic(
-        self, state: utils.LearningState, observation: jnp.ndarray, return_: jnp.ndarray
-    ) -> [utils.LearningState, dict]:
+        self, state: LearningState, observation: jnp.ndarray, return_: jnp.ndarray
+    ) -> tuple[LearningState, dict]:
         def critic_loss(params: hk.Params):
             return -self.critic.apply(params, observation).log_prob(return_).mean()
 
-        def update(critic_state: utils.LearningState):
+        def update(critic_state: LearningState):
             loss, grads = jax.value_and_grad(critic_loss)(critic_state.params)
             new_critic_state = self.critic.grad_step(grads, critic_state)
             return new_critic_state, {

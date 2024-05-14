@@ -450,25 +450,6 @@ files = [
 ]
 
 [[package]]
-name = "distrax"
-version = "0.1.5"
-description = "Distrax: Probability distributions in JAX."
-optional = false
-python-versions = ">=3.9"
-files = [
-    {file = "distrax-0.1.5-py3-none-any.whl", hash = "sha256:5020f4b53a9a480d019c12e44292fbacb7de857cce478bc594dacf29519c61b7"},
-    {file = "distrax-0.1.5.tar.gz", hash = "sha256:ec41522d389af69efedc8d475a7e6d8f229429c00f2140dcd641feacf7e21948"},
-]
-
-[package.dependencies]
-absl-py = ">=0.9.0"
-chex = ">=0.1.8"
-jax = ">=0.1.55"
-jaxlib = ">=0.1.67"
-numpy = ">=1.23.0"
-tensorflow-probability = ">=0.15.0"
-
-[[package]]
 name = "dm-control"
 version = "1.0.19"
 description = "Continuous control environments and MuJoCo Python bindings."
@@ -3708,4 +3689,4 @@ testing = ["big-O", "jaraco.functools", "jaraco.itertools", "more-itertools", "p
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.10,<3.12"
-content-hash = "5aea5160ead67ad26680160c5afc2aa0696348b20f4cc0417a7bfe4d32c12697"
+content-hash = "99ceccc28595d4392dd6dd05472efacf28f189eeee8546616269e1262a43442c"
