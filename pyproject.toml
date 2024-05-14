@@ -45,6 +45,10 @@ ipykernel = "^6.29.4"
 [tool.poetry.group.wandb.dependencies]
 wandb = "^0.16.4"
 
+
+[tool.poetry.group.hydra-submitit.dependencies]
+hydra-submitit-launcher = "^1.2.0"
+
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
