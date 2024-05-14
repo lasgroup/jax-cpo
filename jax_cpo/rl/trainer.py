@@ -4,14 +4,19 @@ import time
 from typing import Optional
 
 import cloudpickle
+from gymnasium import Space
 from omegaconf import DictConfig
 
-from jax_cpo import benchmark_suites
 from jax_cpo.rl import acting, episodic_async_env
 from jax_cpo.rl.epoch_summary import EpochSummary
 from jax_cpo.rl.logging import StateWriter, TrainingLogger
 from jax_cpo.rl.types import Agent, EnvironmentFactory
 from jax_cpo.rl.utils import PRNGSequence
+import haiku as hk
+from copy import deepcopy
+
+from jax_cpo import models
+from jax_cpo import cpo
 
 _LOG = logging.getLogger(__name__)
 
@@ -30,13 +35,34 @@ def should_resume(state_path: str) -> bool:
 
 def start_fresh(
     cfg: DictConfig,
+    make_env: EnvironmentFactory,
 ) -> "Trainer":
-    make_env = benchmark_suites.make(cfg)
     return Trainer(cfg, make_env)
 
 
 def load_state(cfg, state_path) -> "Trainer":
     return Trainer.from_pickle(cfg, state_path)
+
+
+def make_agent(
+    config: DictConfig,
+    observation_space: Space,
+    action_space: Space,
+):
+    actor = hk.without_apply_rng(
+        hk.transform(
+            lambda x: models.Actor(**config.actor, output_size=action_space.shape)(x)
+        )
+    )
+    critic = hk.without_apply_rng(
+        hk.transform(
+            lambda x: models.DenseDecoder(**config.critic, output_size=(1,))(x)
+        )
+    )
+    safety_critic = deepcopy(critic)
+    return cpo.CPO(
+        observation_space, action_space, config, actor, critic, safety_critic
+    )
 
 
 class Trainer:
@@ -72,12 +98,9 @@ class Trainer:
         if self.seeds is None:
             self.seeds = PRNGSequence(self.config.training.seed)
         if self.agent is None:
-            pass
-            # self.agent = SafeSAC(
-            #     self.env.observation_space,
-            #     self.env.action_space,
-            #     self.config,
-            # )
+            self.agent = make_agent(
+                self.config, self.env.observation_space, self.env.action_space
+            )
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
