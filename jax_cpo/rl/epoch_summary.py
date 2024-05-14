@@ -4,7 +4,7 @@ from typing import Any, List, Tuple
 import numpy as np
 from numpy import typing as npt
 
-from swse.rl.trajectory import Trajectory
+from jax_cpo.rl.trajectory import Trajectory
 
 
 @dataclass

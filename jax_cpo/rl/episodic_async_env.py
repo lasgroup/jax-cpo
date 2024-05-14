@@ -14,7 +14,7 @@ from gymnasium.wrappers.clip_action import ClipAction
 from gymnasium.wrappers.rescale_action import RescaleAction
 from gymnasium.wrappers.time_limit import TimeLimit
 
-from swse.rl import wrappers
+from jax_cpo.rl import wrappers
 
 log = logging.getLogger("async_env")
 

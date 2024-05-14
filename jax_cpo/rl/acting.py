@@ -1,10 +1,10 @@
 import numpy as np
 from tqdm import tqdm
 
-from swse.rl.episodic_async_env import EpisodicAsync
-from swse.rl.epoch_summary import EpochSummary
-from swse.rl.trajectory import Trajectory, TrajectoryData, Transition
-from swse.rl.types import Agent
+from jax_cpo.rl.episodic_async_env import EpisodicAsync
+from jax_cpo.rl.epoch_summary import EpochSummary
+from jax_cpo.rl.trajectory import Trajectory, TrajectoryData, Transition
+from jax_cpo.rl.types import Agent
 
 
 def _summarize_episodes(

@@ -8,8 +8,8 @@ from gymnasium.spaces import Box, Discrete
 from numpy import typing as npt
 from omegaconf import DictConfig
 
-from swse.rl.epoch_summary import EpochSummary
-from swse.rl.trajectory import TrajectoryData
+from jax_cpo.rl.epoch_summary import EpochSummary
+from jax_cpo.rl.trajectory import TrajectoryData
 
 FloatArray = npt.NDArray[Union[np.float32, np.float64]]
 

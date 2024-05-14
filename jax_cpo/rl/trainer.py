@@ -6,12 +6,12 @@ from typing import Optional
 import cloudpickle
 from omegaconf import DictConfig
 
-from swse import benchmark_suites
-from swse.rl import acting, episodic_async_env
-from swse.rl.epoch_summary import EpochSummary
-from swse.rl.logging import StateWriter, TrainingLogger
-from swse.rl.types import Agent, EnvironmentFactory
-from swse.rl.utils import PRNGSequence
+from jax_cpo import benchmark_suites
+from jax_cpo.rl import acting, episodic_async_env
+from jax_cpo.rl.epoch_summary import EpochSummary
+from jax_cpo.rl.logging import StateWriter, TrainingLogger
+from jax_cpo.rl.types import Agent, EnvironmentFactory
+from jax_cpo.rl.utils import PRNGSequence
 
 _LOG = logging.getLogger(__name__)
 

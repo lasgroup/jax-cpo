@@ -6,7 +6,7 @@ import numpy as np
 import numpy.typing as npt
 from tabulate import tabulate
 
-from swse.rl.types import FloatArray
+from jax_cpo.rl.types import FloatArray
 
 
 @dataclass
