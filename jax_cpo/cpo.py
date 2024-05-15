@@ -22,7 +22,7 @@ from jax_cpo.rl.types import Report
 tfd = tfp.distributions
 
 
-@partial(jax.vmap, in_axes=[None, 0])
+@partial(jax.vmap, in_axes=[0, None])
 def discounted_cumsum(x: jnp.ndarray, discount: float) -> jnp.ndarray:
     """
     Compute a discounted cummulative sum of vector x. [x0, x1, x2] ->
@@ -55,10 +55,12 @@ class CPO:
         safety_critic: hk.Transformed,
     ):
         self.config = config
-        self.rng_seq = hk.PRNGSequence(config.seed)
-        num_steps = self.config.time_limit // self.config.action_repeat
+        self.rng_seq = hk.PRNGSequence(config.training.seed)
+        num_steps = (
+            self.config.training.time_limit // self.config.training.action_repeat
+        )
         self.buffer = etb.EpisodicTrajectoryBuffer(
-            self.config.num_trajectories,
+            self.config.agent.num_trajectories,
             num_steps,
             observation_space.shape,
             action_space.shape,
@@ -66,19 +68,19 @@ class CPO:
         self.actor = Learner(
             actor,
             next(self.rng_seq),
-            config.actor_opt,
+            config.agent.actor_opt,
             observation_space.sample(),
         )
         self.critic = Learner(
             critic,
             next(self.rng_seq),
-            config.critic_opt,
+            config.agent.critic_opt,
             observation_space.sample(),
         )
         self.safety_critic = Learner(
             safety_critic,
             next(self.rng_seq),
-            config.critic_opt,
+            config.agent.critic_opt,
             observation_space.sample(),
         )
         self.margin = 0.0
@@ -115,34 +117,38 @@ class CPO:
         return Report(metrics)
 
     def train(self, trajectory_data: TrajectoryData):
+        observation = jnp.concatenate(
+            (trajectory_data.observation, trajectory_data.next_observation[:, -1:]),
+            axis=1,
+        )
         eval_ = self.evaluate_trajectories(
             self.critic.params,
             self.safety_critic.params,
-            trajectory_data.observation,
+            observation,
             trajectory_data.reward,
             trajectory_data.cost,
         )
         constraint = trajectory_data.cost.sum(1).mean()
         # https://github.com/openai/safety-starter-agents/blob/4151a283967520ee000f03b3a79bf35262ff3509/safe_rl/pg/agents.py#L260
-        c = constraint - self.config.cost_limit
-        self.margin = max(0, self.margin + self.config.margin_lr * c)
+        c = constraint - self.config.training.cost_limit
+        self.margin = max(0, self.margin + self.config.agent.margin_lr * c)
         c += self.margin
-        c /= self.config.time_limit + 1e-8
+        c /= self.config.training.time_limit + 1e-8
         self.actor.state, actor_report = self.update_actor(
             self.actor.state,
-            trajectory_data.observation[:, :-1],
+            trajectory_data.observation,
             trajectory_data.action,
             eval_.advantage,
             eval_.cost_advantage,
             c,
         )
         self.critic.state, critic_report = self.update_critic(
-            self.critic.state, trajectory_data.observation[:, :-1], eval_.return_
+            self.critic.state, trajectory_data.observation, eval_.return_
         )
         if self.safe:
             self.safety_critic.state, safety_report = self.update_safety_critic(
                 self.safety_critic.state,
-                trajectory_data.observation[:, :-1],
+                trajectory_data.observation,
                 eval_.cost_return,
             )
             critic_report.update(safety_report)
@@ -175,9 +181,9 @@ class CPO:
             b,
             c,
             d_kl_hvp,
-            self.config.target_kl,
-            self.config.safe,
-            self.config.damping_coeff,
+            self.config.agent.target_kl,
+            self.config.training.safe,
+            self.config.agent.damping_coeff,
         )
 
         def evaluate_policy(params):
@@ -196,10 +202,10 @@ class CPO:
             optim_case,
             c,
             state.params,
-            self.config.safe,
-            self.config.backtrack_iters,
-            self.config.backtrack_coeff,
-            self.config.target_kl,
+            self.config.training.safe,
+            self.config.agent.backtrack_iters,
+            self.config.agent.backtrack_coeff,
+            self.config.agent.target_kl,
         )
         return LearningState(new_params, self.actor.opt_state), info
 
@@ -229,7 +235,9 @@ class CPO:
         logprob = pi.log_prob(action)
         ratio = jnp.exp(logprob - old_pi_logprob)
         surr_advantage = ratio * advantage
-        objective = surr_advantage + self.config.entropy_regularization * pi.entropy()
+        objective = (
+            surr_advantage + self.config.agent.entropy_regularization * pi.entropy()
+        )
         surrogate_cost = ratio * cost_advantage
         return -objective.mean(), surrogate_cost.mean()
 
@@ -256,7 +264,9 @@ class CPO:
             }
 
         return jax.lax.scan(
-            lambda state, _: update(state), state, jnp.arange(self.config.vf_iters)
+            lambda state, _: update(state),
+            state,
+            jnp.arange(self.config.agent.vf_iters),
         )
 
     @partial(jax.jit, static_argnums=0)
@@ -275,7 +285,9 @@ class CPO:
             }
 
         return jax.lax.scan(
-            lambda state, _: update(state), state, jnp.arange(self.config.vf_iters)
+            lambda state, _: update(state),
+            state,
+            jnp.arange(self.config.agent.vf_iters),
         )
 
     @partial(jax.jit, static_argnums=0)
@@ -288,22 +300,24 @@ class CPO:
         cost: jnp.ndarray,
     ) -> Evaluation:
         value = self.critic.apply(critic_params, observation).mode()
-        diff = reward + (self.config.discount * value[..., 1:] - value[..., :-1])
-        advantage = discounted_cumsum(diff, self.config.lambda_ * self.config.discount)
+        diff = reward + (self.config.agent.discount * value[..., 1:] - value[..., :-1])
+        advantage = discounted_cumsum(
+            diff, self.config.agent.lambda_ * self.config.agent.discount
+        )
         mean, stddev = advantage.mean(), advantage.std()
-        return_ = discounted_cumsum(reward, self.config.discount)
+        return_ = discounted_cumsum(reward, self.config.agent.discount)
         advantage = (advantage - mean) / (stddev + 1e-8)
         if not self.safe:
             return Evaluation(
                 advantage, return_, jnp.zeros_like(advantage), jnp.zeros_like(return_)
             )
         cost_value = self.safety_critic.apply(safety_critic_params, observation).mode()
-        cost_return = discounted_cumsum(cost, self.config.cost_discount)
+        cost_return = discounted_cumsum(cost, self.config.agent.cost_discount)
         diff = cost + (
-            self.config.cost_discount * cost_value[..., 1:] - cost_value[..., :-1]
+            self.config.agent.cost_discount * cost_value[..., 1:] - cost_value[..., :-1]
         )
         cost_advantage = discounted_cumsum(
-            diff, self.config.lambda_ * self.config.cost_discount
+            diff, self.config.agent.lambda_ * self.config.agent.cost_discount
         )
         # Centering advantage, but not normalize, as in
         # https://github.com/openai/safety-starter-agents/blob/4151a283967520ee000f03b3a79bf35262ff3509/safe_rl/pg/buffer.py#L71
@@ -312,7 +326,7 @@ class CPO:
 
     @property
     def safe(self):
-        return self.config.safe
+        return self.config.training.safe
 
 
 def step_direction(

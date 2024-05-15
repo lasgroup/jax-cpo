@@ -24,7 +24,7 @@ def main(cfg):
         trainer = load_state(cfg, state_path)
     else:
         _LOG.info("Starting a new experiment.")
-        trainer = start_fresh(cfg, make)
+        trainer = start_fresh(cfg, make(cfg))
     with trainer, jax.disable_jit(not cfg.jit):
         trainer.train()
     _LOG.info("Done training.")

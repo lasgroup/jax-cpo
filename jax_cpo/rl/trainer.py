@@ -51,12 +51,12 @@ def make_agent(
 ):
     actor = hk.without_apply_rng(
         hk.transform(
-            lambda x: models.Actor(**config.actor, output_size=action_space.shape)(x)
+            lambda x: models.Actor(**config.agent.actor, output_size=action_space.shape)(x)
         )
     )
     critic = hk.without_apply_rng(
         hk.transform(
-            lambda x: models.DenseDecoder(**config.critic, output_size=(1,))(x)
+            lambda x: models.DenseDecoder(**config.agent.critic, output_size=(1,))(x)
         )
     )
     safety_critic = deepcopy(critic)
