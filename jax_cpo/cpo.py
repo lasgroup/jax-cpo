@@ -22,7 +22,7 @@ from jax_cpo.rl.types import Report
 tfd = tfp.distributions
 
 
-@jax.vmap(in_axes=[0, None])
+@partial(jax.vmap, in_axes=[None, 0])
 def discounted_cumsum(x: jnp.ndarray, discount: float) -> jnp.ndarray:
     """
     Compute a discounted cummulative sum of vector x. [x0, x1, x2] ->
@@ -141,7 +141,9 @@ class CPO:
         )
         if self.safe:
             self.safety_critic.state, safety_report = self.update_safety_critic(
-                self.safety_critic.state, trajectory_data.observation[:, :-1], eval_.cost_return
+                self.safety_critic.state,
+                trajectory_data.observation[:, :-1],
+                eval_.cost_return,
             )
             critic_report.update(safety_report)
         info = {**actor_report, **critic_report, "agent/margin": self.margin}

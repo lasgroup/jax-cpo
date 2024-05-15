@@ -3,12 +3,9 @@ from typing import Sequence, Optional, Callable, Union
 import haiku as hk
 import jax.nn as jnn
 import jax.numpy as jnp
-from tensorflow_probability.substrates import jax as tfp
+import distrax as dtx
 
 from jax_cpo import nets
-
-tfd = tfp.distributions
-tfb = tfp.bijectors
 
 
 class Actor(hk.Module):
@@ -45,7 +42,7 @@ class Actor(hk.Module):
         if stddev.ndim == 1:
             stddev = jnp.expand_dims(stddev, 0)
         stddev = jnp.exp(stddev)
-        multivariate_normal_diag = tfd.MultivariateNormalDiag(mu, stddev)
+        multivariate_normal_diag = dtx.MultivariateNormalDiag(mu, stddev)
         return multivariate_normal_diag
 
 
@@ -75,6 +72,6 @@ class DenseDecoder(hk.Module):
         )
         x = jnp.squeeze(x, axis=-1)
         dist = dict(
-            normal=lambda mu: tfd.Normal(mu, 1.0), bernoulli=lambda p: tfd.Bernoulli(p)
+            normal=lambda mu: dtx.Normal(mu, 1.0), bernoulli=lambda p: dtx.Bernoulli(p)
         )[self._dist]
-        return tfd.Independent(dist(x), 0)
+        return dtx.Independent(dist(x), 0)
