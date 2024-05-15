@@ -1,0 +1,3 @@
+safe_adaptation_gym:
+  task: go_to_goal
+  robot_name: "point"
