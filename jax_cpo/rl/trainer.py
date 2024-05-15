@@ -51,7 +51,9 @@ def make_agent(
 ):
     actor = hk.without_apply_rng(
         hk.transform(
-            lambda x: models.Actor(**config.agent.actor, output_size=action_space.shape)(x)
+            lambda x: models.Actor(
+                **config.agent.actor, output_size=action_space.shape
+            )(x)
         )
     )
     critic = hk.without_apply_rng(
@@ -120,11 +122,10 @@ class Trainer:
             summary, wall_time, steps = self._run_training_epoch(
                 self.config.training.episodes_per_epoch
             )
-            objective, cost_rate, feasibilty = summary.metrics
+            objective, cost_return = summary.metrics
             metrics = {
                 "train/objective": objective,
-                "train/cost_rate": cost_rate,
-                "train/feasibility": feasibilty,
+                "train/cost_return": cost_return,
                 "train/fps": steps / wall_time,
             }
             report = agent.report(summary, epoch, self.step)

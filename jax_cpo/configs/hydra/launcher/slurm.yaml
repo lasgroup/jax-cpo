@@ -1,6 +1,6 @@
 submitit_folder: ${hydra.sweep.dir}/.submitit/%j
 timeout_min: 30
-cpus_per_task: 10
+cpus_per_task: 20
 tasks_per_node: 1
 mem_gb: null
 nodes: 1

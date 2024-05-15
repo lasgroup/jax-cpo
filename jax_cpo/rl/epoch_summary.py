@@ -17,7 +17,7 @@ class EpochSummary:
         return len(self._data) == 0
 
     @property
-    def metrics(self) -> Tuple[float, float, float]:
+    def metrics(self) -> Tuple[float, float]:
         rewards, costs = [], []
         for trajectory_batch in self._data:
             for trajectory in trajectory_batch:
@@ -30,8 +30,7 @@ class EpochSummary:
         stacked_costs = np.stack(costs)
         return (
             _objective(stacked_rewards),
-            _cost_rate(stacked_costs),
-            _feasibility(stacked_costs, self.cost_boundary),
+            _objective(stacked_costs),
         )
 
     @property
@@ -52,10 +51,6 @@ class EpochSummary:
 
 def _objective(rewards: npt.NDArray[Any]) -> float:
     return float(rewards.sum(2).mean())
-
-
-def _cost_rate(costs: npt.NDArray[Any]) -> float:
-    return float(costs.mean())
 
 
 def _feasibility(costs: npt.NDArray[Any], boundary: float) -> float:
