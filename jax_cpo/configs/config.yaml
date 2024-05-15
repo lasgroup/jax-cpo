@@ -30,6 +30,7 @@ writers:
   - jsonl
   - stderr
 
+jit: True
 
 training:
   safe: true
@@ -40,7 +41,6 @@ training:
   episodes_per_epoch: 1
   action_repeat: 1
   render_episodes: 0
-  jit: True
   parallel_envs: 30
 
 agent:
