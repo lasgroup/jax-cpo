@@ -42,6 +42,7 @@ def make(cfg: DictConfig) -> EnvironmentFactory:
             robot_name=task_cfg.robot_name,
             task_name=task,
             seed=cfg.training.seed,
+            render_lidar_and_collision=False,
         )
         env = SafeAdaptationEnvCompatibility(env)
         return env
